@@ -190,6 +190,41 @@ def set_keyswitch_optimization(self, enable):
             driver_file.write('0')
 
 
+@endpoint('razer.device.led.mute', 'setMuteLed', in_sig='b')
+def set_mute_led(self, enable):
+    """
+    Set the status of the mute button LED
+
+    :param enable: Status of mute button LED
+    :type enable: bool
+    """
+    self.logger.debug("DBus call set_mute_led")
+
+    driver_path = self.get_driver_path('mute_led_state')
+
+    with open(driver_path, 'w') as driver_file:
+        if enable:
+            driver_file.write('1')
+        else:
+            driver_file.write('0')
+
+
+@endpoint('razer.device.led.mute', 'getMuteLed', out_sig='b')
+def get_mute_led(self):
+    """
+    Get the status of the mute button LED
+
+    :return: Status of mute button LED
+    :rtype: bool
+    """
+    self.logger.debug("DBus call get_mute_led")
+
+    driver_path = self.get_driver_path('mute_led_state')
+
+    with open(driver_path, 'r') as driver_file:
+        return driver_file.read().strip() == '1'
+
+
 @endpoint('razer.device.led.macromode', 'getMacroEffect', out_sig='i')
 def get_macro_effect(self):
     """

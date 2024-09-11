@@ -706,6 +706,61 @@ static ssize_t razer_attr_read_game_led_state(struct device *dev, struct device_
 }
 
 /**
+ * Write device file "mute_led_state"
+ *
+ * When 1 is written (as a character, 0x31) The mute LED will be enabled, if 0 is written (0x30)
+ * then the mute LED will be disabled
+ */
+static ssize_t razer_attr_write_mute_led_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+    struct razer_kbd_device *device = dev_get_drvdata(dev);
+    struct razer_report request = {0};
+    struct razer_report response = {0};
+    unsigned char enabled = (unsigned char)simple_strtoul(buf, NULL, 10);
+
+    switch (device->usb_pid) {
+    case USB_DEVICE_ID_RAZER_ORNATA_V3:
+    case USB_DEVICE_ID_RAZER_ORNATA_V3_ALT:
+        request = razer_chroma_standard_set_led_state(NOSTORE, MUTE_LED, enabled);
+        request.transaction_id.id = 0x1f;
+        break;
+    default:
+        request = razer_chroma_standard_set_led_state(VARSTORE, MUTE_LED, enabled);
+        request.transaction_id.id = 0xFF;
+    }
+
+    razer_send_payload(device, &request, &response);
+
+    return count;
+}
+
+/**
+ * Read device file "mute_led_state"
+ *
+ * Returns a string
+ */
+static ssize_t razer_attr_read_mute_led_state(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct razer_kbd_device *device = dev_get_drvdata(dev);
+    struct razer_report request = {0};
+    struct razer_report response = {0};
+
+    switch (device->usb_pid) {
+    case USB_DEVICE_ID_RAZER_ORNATA_V3:
+    case USB_DEVICE_ID_RAZER_ORNATA_V3_ALT:
+        request = razer_chroma_standard_get_led_state(NOSTORE, MUTE_LED);
+        request.transaction_id.id = 0x1f;
+        break;
+    default:
+        request = razer_chroma_standard_get_led_state(VARSTORE, MUTE_LED);
+        request.transaction_id.id = 0xFF;
+    }
+
+    razer_send_payload(device, &request, &response);
+    return sprintf(buf, "%d\n", response.arguments[2]);
+}
+
+/**
  * Write device file "keyswitch_optimization"
  */
 static ssize_t razer_attr_write_keyswitch_optimization(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
@@ -3360,6 +3415,7 @@ static DEVICE_ATTR(logo_led_state,          0660, razer_attr_read_logo_led_state
 static DEVICE_ATTR(profile_led_red,         0660, razer_attr_read_profile_led_red,            razer_attr_write_profile_led_red);
 static DEVICE_ATTR(profile_led_green,       0660, razer_attr_read_profile_led_green,          razer_attr_write_profile_led_green);
 static DEVICE_ATTR(profile_led_blue,        0660, razer_attr_read_profile_led_blue,           razer_attr_write_profile_led_blue);
+static DEVICE_ATTR(mute_led_state,          0660, razer_attr_read_mute_led_state,             razer_attr_write_mute_led_state);
 
 static DEVICE_ATTR(test,                    0660, razer_attr_read_test,                       razer_attr_write_test);
 static DEVICE_ATTR(version,                 0440, razer_attr_read_version,                    NULL);
@@ -4073,6 +4129,7 @@ static int razer_kbd_probe(struct hid_device *hdev, const struct hid_device_id *
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_game_led_state);                // Enable game mode & LED
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_macro_led_state);               // Enable macro LED
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_macro_led_effect);              // Change macro LED effect (static, flashing)
+            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_mute_led_state);                // Enable mute LED
             break;
 
         case USB_DEVICE_ID_RAZER_BLACKWIDOW_V4_X:
@@ -4561,6 +4618,7 @@ static void razer_kbd_disconnect(struct hid_device *hdev)
             device_remove_file(&hdev->dev, &dev_attr_game_led_state);                // Enable game mode & LED
             device_remove_file(&hdev->dev, &dev_attr_macro_led_state);               // Enable macro LED
             device_remove_file(&hdev->dev, &dev_attr_macro_led_effect);              // Change macro LED effect (static, flashing)
+            device_remove_file(&hdev->dev, &dev_attr_mute_led_state);                // Enable mute LED
             break;
 
         case USB_DEVICE_ID_RAZER_BLACKWIDOW_V4_X:

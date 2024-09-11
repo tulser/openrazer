@@ -85,6 +85,7 @@ declare -A files_metadata=(
     ["matrix_effect_wave"]="w;"
     ["matrix_effect_wheel"]="w;"
     ["matrix_reactive_trigger"]="w;"
+    ["mute_led_state"]="rw;0"
     ["poll_rate"]="rw;500"
     ["profile_led_blue"]="rw;0"
     ["profile_led_green"]="rw;0"
