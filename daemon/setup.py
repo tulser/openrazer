@@ -13,5 +13,6 @@ setup(
         "PyGObject >= 3.20.0",
         "pyudev >= 0.16.1",
         "setproctitle >= 1.1.8",
+        "libpulse == 0.2"
     ],
 )

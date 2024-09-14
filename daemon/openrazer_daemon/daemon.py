@@ -28,6 +28,7 @@ import openrazer_daemon.hardware
 from openrazer_daemon.dbus_services.service import DBusService
 from openrazer_daemon.device import DeviceCollection
 from openrazer_daemon.misc.screensaver_monitor import ScreensaverMonitor
+from openrazer_daemon.misc.mute_monitor import MuteMonitor
 from openrazer_daemon.misc.autosave_persistence import PersistenceAutoSave
 
 
@@ -112,6 +113,7 @@ class RazerDaemon(DBusService):
 
         self.logger.info("Initialising Daemon (v%s). Pid: %d", __version__, os.getpid())
         self._init_screensaver_monitor()
+        self._init_mute_monitor()
 
         self._razer_devices = DeviceCollection()
         self._load_devices(first_run=True)
@@ -212,6 +214,9 @@ class RazerDaemon(DBusService):
         except dbus.exceptions.DBusException as e:
             self.logger.error("Failed to init ScreensaverMonitor: {}".format(e))
 
+    def _init_mute_monitor(self):
+        self._mute_monitor = MuteMonitor(self.set_keyboard_mute_leds)
+
     def _init_autosave_persistence(self):
         if not self._persistence:
             self.logger.debug("Persistence unspecified. Will not create auto save thread")
@@ -254,7 +259,7 @@ class RazerDaemon(DBusService):
             if hasattr(GLib, "unix_signal_add"):
                 unix_signal_add = GLib.unix_signal_add
             elif hasattr(GLib, "unix_signal_add_full"):
-                unix_signal_add = GLib.unix_signal_add_full
+                unix_signal_add = GLib.unix_signal_add_fullfrom
 
             if unix_signal_add:
                 unix_signal_add(GLib.PRIORITY_HIGH, sig, handler, sig)
@@ -375,6 +380,15 @@ class RazerDaemon(DBusService):
         :rtype: str
         """
         return __version__
+
+    def set_keyboard_mute_leds(self, led_state):
+        """
+        Set the mute LEDs for all supported devices
+        """
+        from openrazer_daemon.dbus_services.dbus_methods import set_mute_led
+        for device in self._razer_devices:
+            if 'set_mute_led' in device.dbus.METHODS:
+                set_mute_led(device.dbus, led_state)
 
     def suspend_devices(self):
         """
@@ -641,6 +655,9 @@ class RazerDaemon(DBusService):
 
         # Stop udev monitor
         self._udev_observer.send_stop()
+
+        # Stop mute monitor
+        self._mute_monitor.stop()
 
         for device in self._razer_devices:
             device.dbus.close()
