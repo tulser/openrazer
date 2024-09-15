@@ -10,6 +10,7 @@
 #include <linux/usb/input.h>
 #include <linux/hid.h>
 #include <linux/dmi.h>
+#include <linux/leds.h>
 #include <linux/input-event-codes.h>
 
 #include "usb_hid_keys.h"
@@ -3839,6 +3840,131 @@ static void razer_kbd_init(struct razer_kbd_device *dev, struct usb_interface *i
     dev->usb_vid = usb_dev->descriptor.idVendor;
     dev->usb_pid = usb_dev->descriptor.idProduct;
     dev->usb_interface_protocol = intf->cur_altsetting->desc.bInterfaceProtocol;
+    // Keyboards have varying media leds
+    dev->led_cdev_mute = NULL;
+}
+
+static int razer_kbd_led_mute_brightness_set(struct led_classdev *led_cdev, enum led_brightness value)
+{
+    struct razer_kbd_device *device = dev_get_drvdata(led_cdev->dev->parent);
+    struct razer_report request = {0};
+    struct razer_report response = {0};
+    unsigned char enabled = (unsigned char)value;
+
+    switch (device->usb_pid) {
+    case USB_DEVICE_ID_RAZER_ORNATA_V3:
+    case USB_DEVICE_ID_RAZER_ORNATA_V3_ALT:
+        request = razer_chroma_standard_set_led_state(NOSTORE, MUTE_LED, enabled);
+        request.transaction_id.id = 0x1f;
+        break;
+    default:
+        request = razer_chroma_standard_set_led_state(VARSTORE, MUTE_LED, enabled);
+        request.transaction_id.id = 0xFF;
+    }
+
+    razer_send_payload(device, &request, &response);
+
+    return 1;
+}
+
+static enum led_brightness razer_kbd_led_mute_brightness_get(struct led_classdev *led_cdev)
+{
+    struct razer_kbd_device *device = dev_get_drvdata(led_cdev->dev->parent);
+    struct razer_report request = {0};
+    struct razer_report response = {0};
+
+    switch (device->usb_pid) {
+    case USB_DEVICE_ID_RAZER_ORNATA_V3:
+    case USB_DEVICE_ID_RAZER_ORNATA_V3_ALT:
+        request = razer_chroma_standard_get_led_state(NOSTORE, MUTE_LED);
+        request.transaction_id.id = 0x1f;
+        break;
+    default:
+        request = razer_chroma_standard_get_led_state(VARSTORE, MUTE_LED);
+        request.transaction_id.id = 0xFF;
+    }
+
+    razer_send_payload(device, &request, &response);
+    return response.arguments[2];
+
+    return 0;
+}
+
+#define RAZER_KBD_LED_MUTE_CDEV_NAME_SUFFIX "::" LED_FUNCTION_MUTE
+
+static int razer_kbd_led_mute_init(struct hid_device *hdev, struct razer_kbd_device *dev)
+{
+    int retval = 0;
+    struct led_classdev *led_cdev = kzalloc(sizeof(struct led_classdev), GFP_KERNEL);
+    size_t name_sz;
+    char *name;
+
+    if (led_cdev == NULL)
+    {
+        retval = -ENOMEM;
+        goto err_mute_cdev_alloc;
+    }
+
+    name_sz = strlen(dev_name(&hdev->dev)) + sizeof(RAZER_KBD_LED_MUTE_CDEV_NAME_SUFFIX);
+    name = kzalloc(name_sz, GFP_KERNEL);
+    if (name == NULL)
+    {
+        retval = -ENOMEM;
+        goto err_mute_name_alloc;
+    }
+    snprintf(name, name_sz, "%s" RAZER_KBD_LED_MUTE_CDEV_NAME_SUFFIX, dev_name(&hdev->dev));
+
+    led_cdev->name = name;
+    led_cdev->max_brightness = 1;
+    led_cdev->default_trigger = "audio-mute";
+    led_cdev->brightness_set_blocking = razer_kbd_led_mute_brightness_set;
+    led_cdev->brightness_get = razer_kbd_led_mute_brightness_get;
+
+    dev->led_cdev_mute = led_cdev;
+    retval = led_classdev_register(&hdev->dev, led_cdev);
+    if (retval < 0)
+        goto err_mute_register_led;
+
+    pr_info("kbd_probe: ");
+
+    return 0;
+
+err_mute_register_led:
+    kfree(name);
+err_mute_name_alloc:
+    kfree(led_cdev);
+err_mute_cdev_alloc:
+    hid_err(hdev, "led init failed\n");
+    return retval;
+}
+
+enum razer_kbd_led_flags
+{
+    RAZER_KBD_LED_MUTE = BIT(0),
+};
+
+static int razer_kbd_led_init(struct hid_device *hdev, struct razer_kbd_device *dev, int led_flags)
+{
+    int retval = 0;
+
+    if (led_flags & RAZER_KBD_LED_MUTE)
+    {
+        retval = razer_kbd_led_mute_init(hdev, dev);
+        if (retval < 0)
+            return retval;
+    }
+
+    return 0;
+}
+
+static void razer_kbd_led_cleanup(struct hid_device *hdev, struct razer_kbd_device *dev)
+{
+    if (dev->led_cdev_mute)
+    {
+        led_classdev_unregister(dev->led_cdev_mute);
+        kfree(dev->led_cdev_mute->name);
+        kfree(dev->led_cdev_mute);
+    }
 }
 
 /**
@@ -3847,6 +3973,7 @@ static void razer_kbd_init(struct razer_kbd_device *dev, struct usb_interface *i
 static int razer_kbd_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
     int retval = 0;
+    int led_flags = 0;
     struct usb_interface *intf = to_usb_interface(hdev->dev.parent);
     struct usb_device *usb_dev = interface_to_usbdev(intf);
     struct razer_kbd_device *dev = NULL;
@@ -4073,6 +4200,7 @@ static int razer_kbd_probe(struct hid_device *hdev, const struct hid_device_id *
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_game_led_state);                // Enable game mode & LED
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_macro_led_state);               // Enable macro LED
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_macro_led_effect);              // Change macro LED effect (static, flashing)
+            led_flags = RAZER_KBD_LED_MUTE;
             break;
 
         case USB_DEVICE_ID_RAZER_BLACKWIDOW_V4_X:
@@ -4311,7 +4439,6 @@ static int razer_kbd_probe(struct hid_device *hdev, const struct hid_device_id *
     }
 
     hid_set_drvdata(hdev, dev);
-    dev_set_drvdata(&hdev->dev, dev);
 
     if(hid_parse(hdev)) {
         hid_err(hdev, "parse failed\n");
@@ -4320,6 +4447,10 @@ static int razer_kbd_probe(struct hid_device *hdev, const struct hid_device_id *
 
     if (hid_hw_start(hdev, HID_CONNECT_DEFAULT)) {
         hid_err(hdev, "hw start failed\n");
+        goto exit_free;
+    }
+
+    if(razer_kbd_led_init(hdev, dev, led_flags) < 0) {
         goto exit_free;
     }
 
@@ -4795,6 +4926,9 @@ static void razer_kbd_disconnect(struct hid_device *hdev)
     }
 
     hid_hw_stop(hdev);
+
+    razer_kbd_led_cleanup(hdev, dev);
+
     kfree(dev);
     dev_info(&intf->dev, "Razer Device disconnected\n");
 }

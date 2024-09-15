@@ -57,6 +57,7 @@ do { \
 #define BLUE_PROFILE_LED  0x0E
 #define RIGHT_SIDE_LED    0x10
 #define LEFT_SIDE_LED     0x11
+#define MUTE_LED          0x19
 #define ARGB_CH_1_LED     0x1A
 #define ARGB_CH_2_LED     0x1B
 #define ARGB_CH_3_LED     0x1C

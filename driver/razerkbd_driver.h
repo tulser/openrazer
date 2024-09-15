@@ -7,6 +7,8 @@
 #ifndef __HID_RAZER_KBD_H
 #define __HID_RAZER_KBD_H
 
+#include <linux/leds.h>
+
 #define USB_DEVICE_ID_RAZER_BLACKWIDOW_ULTIMATE_2012 0x010D
 // 2011 or so edition, see https://web.archive.org/web/20111113132427/http://store.razerzone.com:80/store/razerusa/en_US/pd/productID.235228400/categoryId.49136200/parentCategoryId.35156900
 #define USB_DEVICE_ID_RAZER_BLACKWIDOW_STEALTH_EDITION 0x010E
@@ -171,6 +173,8 @@ struct razer_kbd_device {
 
     unsigned char block_keys[3];
     unsigned char left_alt_on;
+
+    struct led_classdev *led_cdev_mute;
 };
 
 #endif
